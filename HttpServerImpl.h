@@ -90,7 +90,7 @@ namespace net { namespace http {
     }
 
     bool authenticate(PCTSTR user, PCTSTR password) {
-      return utils::string::toBase64(ATL::CStringA(utils::string::format(_T("%S:%S"), user, password))) == credentials;
+      return utils::string::toBase64(ATL::CStringA(utils::string::format(_T("%s:%s"), user, password))) == credentials;
     }
 
   private:

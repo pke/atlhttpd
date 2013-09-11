@@ -8,20 +8,38 @@ using namespace net::http;
 template<class T, class Base = Servlet>
 class ProtectedServletImpl : public Base {
 protected:
-  void handleAuthorizedRequest(Request& request, Response& response, const ATL::CString& mimeType) {
+  /*void handleAuthorizedRequest(Request& request, Response& response, const ATL::CString& mimeType) {
+  }*/
+  ProtectedServletImpl(const ATL::CString& realm, const ATL::CString& user, const ATL::CString& password) : 
+    realm(realm), user(user), password(password) {
   }
+  typedef ProtectedServletImpl<T> inherited;
 
 private:
-  void handleRequest(Request& request, Response& response, const ATL::CString& mimeType) {
+  void handleRequest(Request& request, Response& response, const ATL::CString& mimeType) override {
     BasicAuthentication basicAuth(request);
-    if (!basicAuth.isBasic() || !basicAuth.authenticate(_T("root"), _T("puma"))) {
-      response.header("WWW-Authenticate", "Basic realm=\"Test Server\"")
+    if (!basicAuth.isBasic() || !basicAuth.authenticate(user, password)) {
+      response.header("WWW-Authenticate", ATL::CStringA(utils::string::format(_T("Basic realm=\"%s\""), realm)))
         .status("401 Not authorized");
       response << "Please authenticate!";
     } else {
       T* pT = (T*)this;
       pT->handleAuthorizedRequest(request, response, mimeType);
     }
+  }
+
+  const ATL::CString realm;
+  const ATL::CString user;
+  const ATL::CString password;
+};
+
+class ProtectedServlet : public ProtectedServletImpl<ProtectedServlet> {
+public:
+  ProtectedServlet() : ProtectedServletImpl<ProtectedServlet>(_T("NSA HQ"), _T("NSA"), _T("FUCK!YOU!")) {
+  }
+
+  void handleAuthorizedRequest(Request& request, Response& response, const ATL::CString& mimeType) {
+    response << "You have entered the NSA HQ";
   }
 };
 
@@ -46,7 +64,10 @@ class EchoServlet : public Servlet {
 
 int _tmain(int argc, _TCHAR* argv[]) {
   HttpServer server;
-  server.addServlet("GET /echo/:times", &EchoServlet());
+  EchoServlet echoServlet;
+  server.addServlet("GET /echo/:times", &echoServlet);
+  ProtectedServlet protectedServlet;
+  server.addServlet("GET /protected", &protectedServlet);
   // server.addACL("+192.168.2.125");
   server.run(3000);
 	return 0;
