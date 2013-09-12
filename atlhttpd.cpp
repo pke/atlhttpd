@@ -21,7 +21,7 @@ private:
     if (!basicAuth.isBasic() || !basicAuth.authenticate(user, password)) {
       response.header("WWW-Authenticate", ATL::CStringA(utils::string::format(_T("Basic realm=\"%s\""), realm)))
         .status("401 Not authorized");
-      response << "Please authenticate!";
+      response << "Permission Denied!";
     } else {
       T* pT = (T*)this;
       pT->handleAuthorizedRequest(request, response, mimeType);
@@ -39,15 +39,19 @@ public:
   }
 
   void handleAuthorizedRequest(Request& request, Response& response, const ATL::CString& mimeType) {
-    response << "You have entered the NSA HQ";
+    if (mimeType == "json") {
+      response << "{\"message\":\"You have entered the NSA HQ\"}";
+    } else {
+      response << "<html><h1>NSA HQ</h1><h2>Permission granted.</h2></html>";
+    }
   }
 };
 
 class EchoServlet : public Servlet {
   void handleRequest(Request& request, Response& response, const ATL::CString& mimeType) {
     if (mimeType == _T("xml")) {
-      response.header("Content-Type", "text/xml; charset=UTF-8");
-      response << utils::string::format(_T("<?xml version=\"1.0\" encoding=\"UTF-8\"?><echo>"));
+      //response.header("Content-Type", "text/xml; charset=UTF-8");
+      response << "<?xml version=\"1.0\" encoding=\"UTF-8\"?><echo>";
       ATL::CComVariant var(request.params[_T("times")]);
       if SUCCEEDED(var.ChangeType(VT_I4)) {
         for (int i=0; i<V_I4(&var); ++i) {

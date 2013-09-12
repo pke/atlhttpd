@@ -10,7 +10,7 @@
 #include "utils/string/base64.h"
 
 #pragma comment(lib, "wininet")
-
+#pragma comment(lib, "Urlmon") // FindMimeFromData
 
 // Disable IP restrictions
 // Saves 1KiB on exe size
@@ -104,20 +104,18 @@ namespace net { namespace http {
     /**
       Sets the status to "200 OK" and the following default headers:
       * Connection: close
-      * Content-Type: text/plain; charset=ISO-8859-1
       * Server: The Dude's Server
       * Date: current system date
     */
     Response(const Request& request, Socket& s) : request(request), s(s), _status("200 OK"), sent(0) {
       header("Connection", "close");
-      header("Content-Type", "text/plain; charset=ISO-8859-1");
       header("Server", "The Dude's Server");
       SYSTEMTIME time;
       GetSystemTime(&time);
       // API states, that the buffer must be INTERNET_RFC1123_BUFSIZE in size. But this would be too small and return ERROR_INSUFFICIENT_BUFFER
-      TCHAR timeString[INTERNET_RFC1123_BUFSIZE+1];
-      ATLVERIFY(InternetTimeFromSystemTime(&time, INTERNET_RFC1123_FORMAT, timeString, sizeof(timeString) * sizeof(TCHAR)));
-      header("Date", ATL::CStringA(timeString));
+      CHAR timeString[INTERNET_RFC1123_BUFSIZE+1];
+      ATLVERIFY(InternetTimeFromSystemTimeA(&time, INTERNET_RFC1123_FORMAT, timeString, sizeof(timeString)));
+      header("Date", timeString);
     }
 
     /**
@@ -189,9 +187,30 @@ namespace net { namespace http {
     */
     int send(const char* data = 0, const int dataLen = 0) {
       if (!sent) {
-        header("Content-Length", ATL::CStringA(utils::string::format(_T("%d"), _body.GetLength() + dataLen)));
         sent = ::GetTickCount();
 
+        if (!headers.Lookup("Content-Type")) {
+          PWSTR mimeType = 0;
+          // FUCK YOU MSFT!
+          // According to a user (!) comment in MSDN, the buffer needs to be writable, or the function might crash. WTF!?
+          // Anyway, 256 bytes should be enough to sniff
+          BYTE buffer[256];
+          DWORD size = min(_body.GetLength(), 256);
+          memcpy_s(buffer, 256, _body.GetBuffer(), size);
+          if SUCCEEDED(FindMimeFromData(0, 
+            0, 
+            buffer, 
+            size, 
+            0, 
+            FMFD_ENABLEMIMESNIFFING | 0x00000020/*FMFD_RETURNUPDATEDIMGMIMES*/, 
+            &mimeType, 
+            0)) {
+            header("Content-Type", ATL::CStringA(mimeType));
+            ::CoTaskMemFree((LPVOID)mimeType);
+          }
+        }
+        header("Content-Length", ATL::CStringA(utils::string::format(_T("%d"), _body.GetLength() + dataLen)));
+        
         s.send("HTTP/1.1 ");
         s.sendLine(_status);
         
@@ -345,7 +364,7 @@ namespace net { namespace http {
       const MatchContext::RECHAR* start = 0;
       const MatchContext::RECHAR* end = 0;
       match.GetMatch(group, &start, &end);
-      const int len = (end - start);
+      const int len = (int)(end - start);
       return ATL::CStringA(start, len);
     }
 
@@ -369,12 +388,12 @@ namespace net { namespace http {
         while (regEx.Match(e, &match, &e)) {
           match.GetMatch(0, &start, &end);
           // Add +1 cause the match group does include the colon ":"
-          paramNames.Add(ATL::CStringA(start+1, end-start-1));
+          paramNames.Add(ATL::CStringA(start+1, (int)(end-start)-1));
 
-          int prevPartLen = start-lastPos;
+          int prevPartLen = int(start-lastPos);
           servletRegEx += ATL::CStringA(lastPos, prevPartLen);
           match.GetMatch(1, &start, &end);
-          int len = end - start;
+          int len = int(end - start);
           if (!len) {
             servletRegEx += "{\\a+}";
           } else {
